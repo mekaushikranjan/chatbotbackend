@@ -8,7 +8,13 @@ import { v4 as uuidv4 } from 'uuid';
 const GOOGLE_GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
 const app = express();
-app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+
+// Configure CORS
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true
+}));
+
 app.use(express.json());
 
 // In-memory conversation store
@@ -21,55 +27,34 @@ function getSessionId(req) {
     sessionId = uuidv4(); // Generate unique session ID if missing
   }
   if (!conversations[sessionId]) {
+    console.log(`Creating new session for ID: ${sessionId}`);
     conversations[sessionId] = [{ role: 'system', content: 'You are a helpful AI assistant.' }];
   }
   return sessionId;
 }
 
-// Helper function to call the Google Gemini API and extract the generated text
+// Helper function to call the Google Gemini API
 async function getAIResponse(userMessage) {
   try {
     const payload = {
       contents: [
-        {
-          parts: [
-            {
-              text: userMessage
-            }
-          ]
-        }
+        { parts: [{ text: userMessage }] }
       ]
     };
 
     const response = await axios.post(GOOGLE_GEMINI_API_URL, payload, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
 
-    const data = response.data;
-    // Expected response structure:
-    // {
-    //   "candidates": [
-    //     {
-    //       "content": {
-    //         "parts": [
-    //           { "text": "Generated text here" }
-    //         ]
-    //       }
-    //     }
-    //   ]
-    // }
-    if (data && Array.isArray(data.candidates) && data.candidates.length > 0) {
-      const candidate = data.candidates[0];
-      if (candidate.content && Array.isArray(candidate.content.parts) && candidate.content.parts.length > 0) {
-        return candidate.content.parts[0].text || 'No response generated.';
-      }
+    if (response.data?.candidates?.length) {
+      return response.data.candidates[0]?.content?.parts[0]?.text || 'No response generated.';
     }
-    return 'No response generated.';
+
+    console.error('Unexpected API response:', response.data);
+    return 'AI is currently unavailable. Please try again later.';
   } catch (error) {
-    console.error('Error fetching AI response:', error.response?.data || error.message);
-    return 'The AI is currently unavailable. Please try again later.';
+    console.error('API Error:', error?.response?.data || error?.message || error);
+    return 'AI is currently unavailable. Please try again later.';
   }
 }
 
